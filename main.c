@@ -1,6 +1,5 @@
 #include "ouroc.h"
 #define OUROC_IMPLI
-
 #include <stdint.h>
 
 #define INIT_HASHMAP_CAPACITY 2
@@ -65,18 +64,60 @@ void delete(struct hmap*map,int key){
     map->data[index].dead = true;
 }
 
-struct pair {
-    int key;
-    int value;
-    bool dead;
-    void* (*alloc)(size_t);
-    bool (*equal)(int,int);
-    void (*free)(void*);
-};
+#define TEMPLATE_KV(T,U,template_name)      \
+    struct template_name {                  \
+        T key;                              \
+        U value;                            \
+        bool dead;                          \
+        void* (*alloc)(size_t);             \
+        bool (*equal)(int,int);             \
+        void (*free)(void*);                \
+    }
 
+
+#define DEC_KV(pair_name,name,k,v)      \
+    struct pair_name name = {           \
+            .key = (k),                 \
+            .value = (v),               \
+            .alloc = NULL,              \
+            .free = NULL                \
+    }
+
+#define DEL_KV(kv)                      \
+do{                                     \
+    if((kv)->free != NULL)              \
+        (kv)->free((kv));               \
+}while(0)
+
+
+
+#define DEF_HMAP(hmap,bucket)   \
+struct hmap {                   \
+    struct bucket* data;        \
+    size_t capacity;            \
+}
+
+#define INIT_HMAP(hmap,bucket)                                                    \
+    (hmap)->capacity = INIT_HASHMAP_CAPACITY;                                     \
+    (hmap)->data = malloc(INIT_HASHMAP_CAPACITY*sizeof(struct bucket));           \
+    for(size_t i = 0 ; i < (hmap)->capacity ; ++i) (hmap)->data[i].dead = true;   \
+
+#define DEL_HMAP(hmap)                                              \
+    for(size_t i = 0 ; i < (hmap)->capacity ; ++i){                 \
+        if((hmap)->data[i].dead == false) DEL_KV(&(hmap)->data[i]); \
+    }                                                               \
+    free((hmap)->data)
+
+// Usage: defining the templates used
+TEMPLATE_KV(int,int,int_pair);
+DEF_HMAP(int_map,int_pair);
 
 int main(void){
+    struct int_map test;
+    INIT_HMAP(&test,int_pair);
+    DEL_HMAP(&test);
 
+    return 0;
     // init <done>
     struct hmap* map = malloc(sizeof(struct hmap));
     map->capacity = INIT_HASHMAP_CAPACITY;
