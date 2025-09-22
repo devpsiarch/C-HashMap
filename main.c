@@ -1,8 +1,9 @@
 #include "ouroc.h"
 #define OUROC_IMPLI
 #include <stdint.h>
+#include <assert.h>
 
-#define INIT_HASHMAP_CAPACITY 2
+#define INIT_HASHMAP_CAPACITY 512
 
 uint32_t jenkins_one_at_a_time_hash(void* key,size_t length){
     const uint8_t* bytes = (const uint8_t*)key;
@@ -35,7 +36,7 @@ void insert(struct hmap* map,struct bucket value){
     value.dead = false;
     uint32_t index = jenkins_one_at_a_time_hash(&(value.key),sizeof(value.key)) % map->capacity;
     printf("%u\n",index);
-    while(map->data[index].dead != true) ++index;
+    while(index < map->capacity && !(map->data[index].key == value.key) && map->data[index].dead != true) ++index;
     map->data[index] = value;
 }
 
@@ -64,14 +65,14 @@ void delete(struct hmap*map,int key){
     map->data[index].dead = true;
 }
 
-#define TEMPLATE_KV(T,U,template_name)      \
-    struct template_name {                  \
-        T key;                              \
-        U value;                            \
-        bool dead;                          \
-        void* (*alloc)(size_t);             \
-        bool (*equal)(int,int);             \
-        void (*free)(void*);                \
+#define TEMPLATE_KV(T,U,template_name)                                          \
+    struct template_name {                                                      \
+        T key;                                                                  \
+        U value;                                                                \
+        bool dead;                                                              \
+        void (*alloc)(struct template_name*);                                   \
+        bool (*equal)(struct template_name*,struct template_name*);             \
+        void (*free)(struct template_name*);                                    \
     }
 
 
@@ -80,8 +81,19 @@ void delete(struct hmap*map,int key){
             .key = (k),                 \
             .value = (v),               \
             .alloc = NULL,              \
-            .free = NULL                \
+            .free = NULL,               \
+            .equal = NULL               \
     }
+
+
+#define DEC_COMPLEX_KV(pair_name,name,a,f,e)\
+    struct pair_name name = {               \
+            .alloc = a,                     \
+            .free = f,                      \
+            .equal = e                      \
+    }
+
+
 
 #define DEL_KV(kv)                      \
 do{                                     \
@@ -91,49 +103,52 @@ do{                                     \
 
 
 
-#define DEF_HMAP(hmap,bucket)   \
-struct hmap {                   \
-    struct bucket* data;        \
-    size_t capacity;            \
-}
-
-#define INIT_HMAP(hmap,bucket)                                                    \
-    (hmap)->capacity = INIT_HASHMAP_CAPACITY;                                     \
-    (hmap)->data = malloc(INIT_HASHMAP_CAPACITY*sizeof(struct bucket));           \
-    for(size_t i = 0 ; i < (hmap)->capacity ; ++i) (hmap)->data[i].dead = true;   \
-
-#define DEL_HMAP(hmap)                                              \
-    for(size_t i = 0 ; i < (hmap)->capacity ; ++i){                 \
-        if((hmap)->data[i].dead == false) DEL_KV(&(hmap)->data[i]); \
-    }                                                               \
-    free((hmap)->data)
-
 // Usage: defining the templates used
 TEMPLATE_KV(int,int,int_pair);
-DEF_HMAP(int_map,int_pair);
+
+
 
 int main(void){
-    struct int_map test;
-    INIT_HMAP(&test,int_pair);
-    DEL_HMAP(&test);
-
-    return 0;
     // init <done>
     struct hmap* map = malloc(sizeof(struct hmap));
     map->capacity = INIT_HASHMAP_CAPACITY;
     map->data = malloc(INIT_HASHMAP_CAPACITY*sizeof(struct bucket));
     for(int i = 0 ; i < INIT_HASHMAP_CAPACITY ; ++i) map->data[i].dead = true;
     // insert 
-    insert(map,(struct bucket){.key = 15,.value = 1});
-    insert(map,(struct bucket){.key = 5,.value = 2});
-    // delete 
-    delete(map,15);
+    // insert
+    insert(map, (struct bucket){.key = 15, .value = 1});
+    insert(map, (struct bucket){.key = 5,  .value = 2});
+    insert(map, (struct bucket){.key = 25, .value = 3});
 
+    // lookups
+    assert(lookup(map, 15) == 1);
+    assert(lookup(map, 5)  == 2);
+    assert(lookup(map, 25) == 3);
+    printf("✅ Insert + lookup passed\n");
 
-    int key = 15;
+    // overwrite value
+    insert(map, (struct bucket){.key = 15, .value = 99});
+    assert(lookup(map, 15) == 99);
+    printf("✅ Overwrite passed\n");
 
-    printf("Look up for %d is %d\n",key,lookup(map,key));
+    // delete key
+    delete(map, 15);
+    assert(lookup(map, 15) == -1); // assuming -1 means "not found"
+    printf("✅ Delete passed\n");
 
+    // lookup non-existing key
+    int missing = 42;
+    assert(lookup(map, missing) == -1);
+    printf("✅ Missing key lookup passed\n");
+
+    // multiple deletions
+    delete(map, 5);
+    delete(map, 25);
+    assert(lookup(map, 5)  == -1);
+    assert(lookup(map, 25) == -1);
+    printf("✅ Multiple deletes passed\n");
+
+    printf("🎉 All tests passed!\n");
 defer:
     free(map->data);
     free(map);
