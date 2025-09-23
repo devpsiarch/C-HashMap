@@ -1,24 +1,11 @@
 #include "ouroc.h"
 #define OUROC_IMPLI
-#include <stdint.h>
+
+#include "template_hmap.h"
+#define TEMPLATE_HMAP_IMPL
+
 #include <assert.h>
 
-#define INIT_HASHMAP_CAPACITY 512
-
-uint32_t jenkins_one_at_a_time_hash(void* key,size_t length){
-    const uint8_t* bytes = (const uint8_t*)key;
-    size_t i = 0;
-    uint32_t hash = 0;
-    while(i != length){
-        hash += bytes[i++];
-        hash += hash << 10;
-        hash ^= hash >> 6;
-    }
-    hash += hash << 3;
-    hash ^= hash >> 11;
-    hash += hash << 15;
-    return hash;
-}
 
 struct bucket {
     int key;
@@ -31,22 +18,59 @@ struct hmap {
     size_t capacity;
 };
 
+/*
+name_hash_table => declare && defined function that do the job
+    macros => select the functions to call < based on name of the hashtable
+*/
+
+struct IntInt {
+    int key;
+    int value;
+    bool dead;
+};
+struct IntIntMap {
+    struct IntInt* data;
+    size_t capacity;
+};
+
+
+void rehash(struct hmap* map);
+void insert(struct hmap* map,struct bucket value);
+int lookup(struct hmap* map,int key);
+void delete(struct hmap*map,int key);
+
+// triggered when we exceed buckets or some other metric
+void rehash(struct hmap* map){
+    struct bucket* old_data = map->data;
+    size_t old_size = map->capacity;
+    map->capacity *= 2;
+    map->data = malloc(sizeof(struct bucket)*map->capacity);
+    for(size_t i = 0 ; i < map->capacity ; ++i) map->data[i].dead = true;
+    // copy back the old_data into the new data
+    for(size_t j = 0 ; j < old_size ; ++j){
+        insert(map,old_data[j]);
+    }
+    free(old_data);
+}
+
 // needs only void* and size of said pointer to achieve the hash
 void insert(struct hmap* map,struct bucket value){
     value.dead = false;
     uint32_t index = jenkins_one_at_a_time_hash(&(value.key),sizeof(value.key)) % map->capacity;
     printf("%u\n",index);
     printf("key : %d ,size %zu\n",&(value.key),sizeof(value.key));
-    int saved = index;
+    uint32_t saved = index;
     while(!(map->data[index].key == value.key) && !map->data[index].dead){
         printf("Inserting rn ...\n");
         ++index;
         index %= map->capacity;
         if(index == saved){
-            printf("HashMap full needs rehash\n");
-            exit(0);
+            rehash(map);
+            insert(map,value);
+            return;
         }
     }
+    
     printf("We put it in %u\n",index);
     map->data[index] = value;
 }
@@ -122,12 +146,64 @@ do{                                     \
 }while(0)
 
 
-
 // Usage: defining the templates used
 TEMPLATE_KV(int,int,int_pair);
 
+TEMPLATE_DEFINE_HASHMAP(CharCharMap,CharChar,char,char);
 
 int main(void){
+    // THANKS TO LLM for writting the tests !!!
+    struct CharCharMap test;
+    test.capacity = INIT_HASHMAP_CAPACITY;
+    test.data = malloc(INIT_HASHMAP_CAPACITY * sizeof(struct CharChar));
+    for (size_t i = 0; i < test.capacity; ++i) test.data[i].dead = true;
+
+    // ---- Insert & Lookup Test ----
+    struct CharChar item1 = {.key = 'c', .value = 'a'};
+    HMAP_INSERT(CharCharMap, &test, item1);
+    char* c = HMAP_LOOKUP(CharCharMap, &test, 'c');
+    assert(c != NULL && *c == 'a');
+    printf("PASS: Insert & lookup single element\n");
+
+    // ---- Overwrite Existing Key ----
+    struct CharChar item2 = {.key = 'c', .value = 'z'};
+    HMAP_INSERT(CharCharMap, &test, item2);
+    c = HMAP_LOOKUP(CharCharMap, &test, 'c');
+    assert(c != NULL && *c == 'z');
+    printf("PASS: Overwrite existing key\n");
+
+    // ---- Insert Multiple Keys ----
+    struct CharChar item3 = {.key = 'x', .value = '1'};
+    struct CharChar item4 = {.key = 'y', .value = '2'};
+    HMAP_INSERT(CharCharMap, &test, item3);
+    HMAP_INSERT(CharCharMap, &test, item4);
+    assert(*HMAP_LOOKUP(CharCharMap, &test, 'x') == '1');
+    assert(*HMAP_LOOKUP(CharCharMap, &test, 'y') == '2');
+    printf("PASS: Insert multiple keys\n");
+
+    // ---- Delete Key ----
+    HMAP_DELETE(CharCharMap, &test, 'c');
+    assert(HMAP_LOOKUP(CharCharMap, &test, 'c') == NULL);
+    printf("PASS: Delete key\n");
+
+    // ---- Lookup Missing Key ----
+    assert(HMAP_LOOKUP(CharCharMap, &test, 'q') == NULL);
+    printf("PASS: Lookup missing key\n");
+
+    // ---- Collision Handling ----
+    // Assuming your hash function might collide chars with same hash index
+    // You can force collision by inserting different keys until they land same bucket
+    struct CharChar item5 = {.key = 'A', .value = 'X'};
+    struct CharChar item6 = {.key = 'B', .value = 'Y'};
+    HMAP_INSERT(CharCharMap, &test, item5);
+    HMAP_INSERT(CharCharMap, &test, item6);
+    assert(*HMAP_LOOKUP(CharCharMap, &test, 'A') == 'X');
+    assert(*HMAP_LOOKUP(CharCharMap, &test, 'B') == 'Y');
+    printf("PASS: Collision handling\n");
+
+    free(test.data);
+    printf("All tests passed ✅\n");    return 0;
+    return 0;
     // init <done>
     struct hmap* map = malloc(sizeof(struct hmap));
     map->capacity = INIT_HASHMAP_CAPACITY;
