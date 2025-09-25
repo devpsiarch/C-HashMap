@@ -1,6 +1,3 @@
-#include "ouroc.h"
-#define OUROC_IMPLI
-
 #include "template_hmap.h"
 #define TEMPLATE_HMAP_IMPL
 

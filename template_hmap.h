@@ -2,7 +2,9 @@
 #define TEMPLATE_HMAP_H
 
 #include "ouroc.h"
+#ifndef OUROC_IMPLI
 #define OUROC_IMPLI
+#endif
 #include <stdint.h>
 
 
@@ -18,7 +20,7 @@ We have a template macro that **declares and defined** all of the following for 
 
  */
 
-#define INIT_HASHMAP_CAPACITY 512
+#define INIT_HASHMAP_CAPACITY 512 
 
 uint32_t jenkins_one_at_a_time_hash(void* key,size_t length);
 
@@ -32,10 +34,16 @@ uint32_t jenkins_one_at_a_time_hash(void* key,size_t length);
         struct name_of_pair* data;                                                          \
         size_t capacity;                                                                    \
     };                                                                                      \
+    void name_of_hash_map##_create(struct name_of_hash_map*map);                            \
     void name_of_hash_map##_rehash(struct name_of_hash_map* map);                           \
     void name_of_hash_map##_insert(struct name_of_hash_map* map,struct name_of_pair value); \
     U* name_of_hash_map##_lookup(struct name_of_hash_map* map,T key);                       \
     void name_of_hash_map##_delete(struct name_of_hash_map*map,T key);                      \
+    void name_of_hash_map##_create(struct name_of_hash_map*map){                            \
+        map->data = malloc(INIT_HASHMAP_CAPACITY*sizeof(struct name_of_pair));              \
+        map->capacity = INIT_HASHMAP_CAPACITY;                                              \
+        for (size_t i = 0; i < map->capacity; ++i) map->data[i].dead = true;                \
+    }                                                                                       \
     void name_of_hash_map##_rehash(struct name_of_hash_map* map){                           \
         struct name_of_pair* old_data = map->data;                                          \
         size_t old_size = map->capacity;                                                    \
@@ -53,7 +61,6 @@ uint32_t jenkins_one_at_a_time_hash(void* key,size_t length);
         uint32_t index = jenkins_one_at_a_time_hash(&(value.key),sizeof(value.key)) % map->capacity;\
         uint32_t saved = index;                                                             \
         while(!(map->data[index].key == value.key) && !map->data[index].dead){              \
-            printf("Inserting rn ...\n");                                                   \
             ++index;                                                                        \
             index %= map->capacity;                                                         \
             if(index == saved){                                                             \
@@ -62,14 +69,12 @@ uint32_t jenkins_one_at_a_time_hash(void* key,size_t length);
                 return;                                                                     \
             }                                                                               \
         }                                                                                   \
-        printf("We put it in %u\n",index);                                                  \
         map->data[index] = value;                                                           \
     }                                                                                       \
     U* name_of_hash_map##_lookup(struct name_of_hash_map* map,T key){                       \
         uint32_t index = jenkins_one_at_a_time_hash(&key,sizeof(key)) % map->capacity;      \
         uint32_t i = index;                                                                 \
         while(map->data[index].dead == false && map->data[index].key != key){               \
-            printf("Searching rn ...\n");                                                   \
             ++index;                                                                        \
             index %= map->capacity;                                                         \
             if(i == index){                                                                 \
@@ -83,7 +88,6 @@ uint32_t jenkins_one_at_a_time_hash(void* key,size_t length);
         uint32_t index = jenkins_one_at_a_time_hash(&key,sizeof(key)) % map->capacity;      \
         uint32_t i = index;                                                                 \
         while(map->data[index].key != key){                                                 \
-            printf("deleting ...\n");                                                       \
             ++index;                                                                        \
             index %= map->capacity;                                                         \
             if(i == index) return; /*it wasnt even there*/                                  \
@@ -92,6 +96,7 @@ uint32_t jenkins_one_at_a_time_hash(void* key,size_t length);
     }
 
 
+#define HMAP_CREATE(name_of_hash_map,map_p) name_of_hash_map##_create(map_p)
 #define HMAP_REHASH(name_of_hash_map,map_p) name_of_hash_map##_rehash(map_p)
 #define HMAP_INSERT(name_of_hash_map,map_p,value) name_of_hash_map##_insert(map_p,value)
 #define HMAP_LOOKUP(name_of_hash_map,map_p,key) name_of_hash_map##_lookup(map_p,key)
